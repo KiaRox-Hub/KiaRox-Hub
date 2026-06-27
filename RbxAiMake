@@ -1,0 +1,539 @@
+-- Roblox Aim Assist Script
+-- Clean UI with all requested features
+
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Camera = workspace.CurrentCamera
+
+
+-- Variables
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+
+-- Configuration Table
+local Config = {
+    AimEnabled = false,
+    AimKeybind = Enum.KeyCode.RightShift,
+    FOV = 100,
+    Smoothness = 0.1,
+    TargetLock = false,
+    WallCheck = false,
+    FOVDetection = true,
+    FOVColor = Color3.fromRGB(255, 255, 255),
+    FOVTransparency = 0.5
+}
+
+
+-- Targeting Variables
+local CurrentTarget = nil
+local LockedTarget = nil
+
+
+-- UI Variables
+local ScreenGui = nil
+local MainFrame = nil
+local ToggleBtn = nil
+local IsOpen = true
+
+
+-- Functions to be defined
+local GetNearestTarget
+local CanSeeTarget
+local UpdateFOVCircle
+local CreateUI
+
+
+-- == CORE FUNCTIONALITY ==
+
+
+-- Check walls between player and target
+function CanSeeTarget(target)
+    if not Config.WallCheck then
+        return true
+    end
+
+
+local character = LocalPlayer.Character
+local targetCharacter = target.Character
+
+if not character or not targetCharacter then
+    return false
+end
+
+local head = character:FindFirstChild("Head")
+local targetHead = targetCharacter:FindFirstChild("Head")
+
+if not head or not targetHead then
+    return false
+end
+
+local raycastParams = RaycastParams.new()
+raycastParams.FilterDescendantsInstances = {character, targetCharacter}
+raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local direction = targetHead.Position - head.Position
+local result = workspace:Raycast(head.Position, direction, raycastParams)
+
+if result then
+    return false
+end
+
+return true
+
+end
+
+
+-- Get nearest target within FOV
+function GetNearestTarget()
+    local nearestPlayer = nil
+    local shortestDistance = Config.FOV
+
+
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.Humanoid.Health > 0 then
+        
+        local character = player.Character
+        local humanoidRootPart = character.HumanoidRootPart
+        
+        -- Check if target is on screen
+        local screenPosition, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+        
+        if onScreen then
+            -- Calculate distance from screen center (FOV check)
+            local mousePosition = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+            local screenPosition2D = Vector2.new(screenPosition.X, screenPosition.Y)
+            local distance = (screenPosition2D - mousePosition).Magnitude
+            
+            if distance < shortestDistance then
+                -- Check wall check
+                if CanSeeTarget(player) then
+                    nearestPlayer = player
+                    shortestDistance = distance
+                end
+            end
+        end
+    end
+end
+
+return nearestPlayer
+
+end
+
+
+-- Switch to next target
+function SwitchTarget()
+    if Config.TargetLock then
+        -- Get new target and lock to it
+        local newTarget = GetNearestTarget()
+        if newTarget and newTarget ~= LockedTarget then
+            LockedTarget = newTarget
+            CurrentTarget = newTarget
+        end
+    else
+        -- Just update current target
+        CurrentTarget = GetNearestTarget()
+    end
+end
+
+
+-- Update FOV Circle
+function UpdateFOVCircle()
+    if not ScreenGui or not ScreenGui:FindFirstChild("FOVCircle") then
+        return
+    end
+
+
+local fovCircle = ScreenGui.FOVCircle
+
+if Config.FOVDetection and IsOpen then
+    fovCircle.Visible = true
+    fovCircle.Size = UDim2.new(0, Config.FOV * 2, 0, Config.FOV * 2)
+    fovCircle.Position = UDim2.new(0.5, -Config.FOV, 0.5, -Config.FOV)
+    fovCircle.Color = Config.FOVColor
+    fovCircle.BackgroundTransparency = Config.FOVTransparency
+else
+    fovCircle.Visible = false
+end
+
+end
+
+
+-- == AIMING LOGIC ==
+
+
+RunService.RenderStepped:Connect(function(deltaTime)
+    if Config.AimEnabled then
+        local target = Config.TargetLock and LockedTarget or CurrentTarget
+
+
+    if not target then
+        target = GetNearestTarget()
+        CurrentTarget = target
+        
+        if Config.TargetLock and target then
+            LockedTarget = target
+        end
+    end
+    
+    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+        local targetPart = target.Character.HumanoidRootPart
+        
+        -- Smooth aim using CFrame interpolation
+        local currentCFrame = Camera.CFrame
+        local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+        
+        -- Apply smoothing
+        local smoothedCFrame = currentCFrame:Lerp(targetCFrame, Config.Smoothness)
+        
+        Camera.CFrame = smoothedCFrame
+    end
+else
+    CurrentTarget = nil
+    LockedTarget = nil
+end
+
+UpdateFOVCircle()
+
+end)
+
+
+-- == UI CREATION ==
+
+
+function CreateUI()
+    -- Destroy existing UI
+    if ScreenGui then
+        ScreenGui:Destroy()
+    end
+
+
+-- Create ScreenGui
+ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AimAssistUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = game:GetService("CoreGui") -- Use CoreGui for better persistence
+
+-- Create FOV Circle
+local fovCircle = Instance.new("Frame")
+fovCircle.Name = "FOVCircle"
+fovCircle.Size = UDim2.new(0, Config.FOV * 2, 0, Config.FOV * 2)
+fovCircle.Position = UDim2.new(0.5, -Config.FOV, 0.5, -Config.FOV)
+fovCircle.BackgroundColor3 = Config.FOVColor
+fovCircle.BackgroundTransparency = Config.FOVTransparency
+fovCircle.BorderSizePixel = 0
+fovCircle.Parent = ScreenGui
+
+local fovUICorner = Instance.new("UICorner")
+fovUICorner.CornerRadius = UDim.new(1, 0)
+fovUICorner.Parent = fovCircle
+
+-- Create Toggle Button
+ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "ToggleBtn"
+ToggleBtn.Size = UDim2.new(0, 40, 0, 25)
+ToggleBtn.Position = UDim2.new(0, 10, 0, 10)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Text = "Hide"
+ToggleBtn.TextSize = 12
+ToggleBtn.Font = Enum.Font.Gotham
+ToggleBtn.Parent = ScreenGui
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 4)
+toggleCorner.Parent = ToggleBtn
+
+-- Create Main Frame
+MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 280, 0, 350)
+MainFrame.Position = UDim2.new(0, 60, 0, 10)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = MainFrame
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(60, 60, 60)
+mainStroke.Thickness = 1
+mainStroke.Parent = MainFrame
+
+-- Title
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Size = UDim2.new(1, 0, 0, 35)
+title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Text = "Aim Assist Settings"
+title.TextSize = 16
+title.Font = Enum.Font.GothamBold
+title.Parent = MainFrame
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 8)
+titleCorner.Parent = title
+
+-- Round only top corners
+local titlePadding = Instance.new("UIPadding")
+titlePadding.PaddingTop = UDim.new(0, 8)
+titlePadding.Parent = title
+
+-- Settings Frame
+local settingsFrame = Instance.new("Frame")
+settingsFrame.Name = "SettingsFrame"
+settingsFrame.Size = UDim2.new(1, -20, 1, -50)
+settingsFrame.Position = UDim2.new(0, 10, 0, 40)
+settingsFrame.BackgroundTransparency = 1
+settingsFrame.Parent = MainFrame
+
+-- Helper function to create settings
+local function CreateSetting yPos, labelText, toggle, initialValue, callback
+    local settingFrame = Instance.new("Frame")
+    settingFrame.Size = UDim2.new(1, 0, 0, 45)
+    settingFrame.Position = UDim2.new(0, 0, 0, yPos)
+    settingFrame.BackgroundTransparency = 1
+    settingFrame.Parent = settingsFrame
+    
+    -- Label
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0, 150, 0, 20)
+    label.Position = UDim2.new(0, 0, 0, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(200, 200, 200)
+    label.Text = labelText
+    label.TextSize = 13
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = settingFrame
+    
+    if toggle then
+        -- Toggle Button
+        local toggleBtn = Instance.new("TextButton")
+        toggleBtn.Size = UDim2.new(0, 50, 0, 24)
+        toggleBtn.Position = UDim2.new(1, -60, 0, 0)
+        toggleBtn.BackgroundColor3 = initialValue and Color3.fromRGB(76, 175, 80) or Color3.fromRGB(158, 158, 158)
+        toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        toggleBtn.Text = initialValue and "ON" or "OFF"
+        toggleBtn.TextSize = 11
+        toggleBtn.Font = Enum.Font.GothamBold
+        toggleBtn.Parent = settingFrame
+        
+        local toggleBtnCorner = Instance.new("UICorner")
+        toggleBtnCorner.CornerRadius = UDim.new(0, 4)
+        toggleBtnCorner.Parent = toggleBtn
+        
+        toggleBtn.MouseButton1Click:Connect(function()
+            local newValue = not initialValue
+            initialValue = newValue
+            toggleBtn.BackgroundColor3 = newValue and Color3.fromRGB(76, 175, 80) or Color3.fromRGB(158, 158, 158)
+            toggleBtn.Text = newValue and "ON" or "OFF"
+            callback(newValue)
+        end)
+    else
+        -- Value Display
+        local valueLabel = Instance.new("TextLabel")
+        valueLabel.Size = UDim2.new(0, 50, 0, 20)
+        valueLabel.Position = UDim2.new(1, -60, 0, 0)
+        valueLabel.BackgroundTransparency = 1
+        valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        valueLabel.Text = tostring(initialValue)
+        valueLabel.TextSize = 13
+        valueLabel.Font = Enum.Font.Gotham
+        valueLabel.Parent = settingFrame
+        
+        -- Decrement Button
+        local decBtn = Instance.new("TextButton")
+        decBtn.Size = UDim2.new(0, 25, 0, 20)
+        decBtn.Position = UDim2.new(1, -60, 0, 22)
+        decBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        decBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        decBtn.Text = "-"
+        decBtn.TextSize = 14
+        decBtn.Font = Enum.Font.GothamBold
+        decBtn.Parent = settingFrame
+        
+        local decCorner = Instance.new("UICorner")
+        decCorner.CornerRadius = UDim.new(0, 4)
+        decCorner.Parent = decBtn
+        
+        -- Increment Button
+        local incBtn = Instance.new("TextButton")
+        incBtn.Size = UDim2.new(0, 25, 0, 20)
+        incBtn.Position = UDim2.new(1, -30, 0, 22)
+        incBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        incBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        incBtn.Text = "+"
+        incBtn.TextSize = 14
+        incBtn.Font = Enum.Font.GothamBold
+        incBtn.Parent = settingFrame
+        
+        local incCorner = Instance.new("UICorner")
+        incCorner.CornerRadius = UDim.new(0, 4)
+        incCorner.Parent = incBtn
+        
+        decBtn.MouseButton1Click:Connect(function()
+            callback(initialValue - 1, valueLabel)
+        end)
+        
+        incBtn.MouseButton1Click:Connect(function()
+            callback(initialValue + 1, valueLabel)
+        end)
+    end
+    
+    return settingFrame
+end
+
+-- Create Settings
+local yPos = 0
+
+-- Aim Toggle
+CreateSetting(yPos, "Aim Enabled", true, Config.AimEnabled, function(value)
+    Config.AimEnabled = value
+end)
+yPos = yPos + 50
+
+-- FOV
+CreateSetting(yPos, "FOV", false, Config.FOV, function(value, label)
+    Config.FOV = math.max(10, math.min(200, value))
+    label.Text = tostring(Config.FOV)
+end)
+yPos = yPos + 50
+
+-- Smoothness
+CreateSetting(yPos, "Smoothness", false, Config.Smoothness * 10, function(value, label)
+    Config.Smoothness = math.max(1, math.min(100, value)) / 100
+    label.Text = tostring(Config.Smoothness * 10)
+end)
+yPos = yPos + 50
+
+-- Target Lock
+CreateSetting(yPos, "Target Lock", true, Config.TargetLock, function(value)
+    Config.TargetLock = value
+    if value then
+        LockedTarget = CurrentTarget
+    else
+        LockedTarget = nil
+    end
+end)
+yPos = yPos + 50
+
+-- Wall Check
+CreateSetting(yPos, "Wall Check", true, Config.WallCheck, function(value)
+    Config.WallCheck = value
+end)
+yPos = yPos + 50
+
+-- FOV Detection
+CreateSetting(yPos, "FOV Detection", true, Config.FOVDetection, function(value)
+    Config.FOVDetection = value
+end)
+yPos = yPos + 50
+
+-- Switch Target Button
+local switchBtn = Instance.new("TextButton")
+switchBtn.Size = UDim2.new(1, -20, 0, 30)
+switchBtn.Position = UDim2.new(0, 10, 0, yPos + 10)
+switchBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+switchBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+switchBtn.Text = "Switch Target"
+switchBtn.TextSize = 12
+switchBtn.Font = Enum.Font.GothamBold
+switchBtn.Parent = MainFrame
+
+local switchCorner = Instance.new("UICorner")
+switchCorner.CornerRadius = UDim.new(0, 4)
+switchCorner.Parent = switchBtn
+
+switchBtn.MouseButton1Click:Connect(function()
+    SwitchTarget()
+end)
+
+-- Keybind Info
+local keybindLabel = Instance.new("TextLabel")
+keybindLabel.Size = UDim2.new(1, -20, 0, 20)
+keybindLabel.Position = UDim2.new(0, 10, 1, -30)
+keybindLabel.BackgroundTransparency = 1
+keybindLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+keybindLabel.Text = "Aim Key: Right Shift | Hide/Show: Insert"
+keybindLabel.TextSize = 11
+keybindLabel.Font = Enum.Font.Gotham
+keybindLabel.Parent = MainFrame
+
+-- Toggle Button Functionality
+ToggleBtn.MouseButton1Click:Connect(function()
+    if MainFrame.Visible then
+        MainFrame.Visible = false
+        ToggleBtn.Text = "Show"
+    else
+        MainFrame.Visible = true
+        ToggleBtn.Text = "Hide"
+    end
+end)
+
+return ScreenGui
+
+end
+
+
+-- == INPUT HANDLING ==
+
+
+-- Handle aim keybind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+
+if input.KeyCode == Config.AimKeybind then
+    Config.AimEnabled = not Config.AimEnabled
+    
+    -- Update UI toggle
+    if MainFrame then
+        local aimToggle = MainFrame.SettingsFrame:FindFirstChild("Frame") and MainFrame.SettingsFrame.Frame:FindFirstChild("TextButton")
+        if aimToggle then
+            aimToggle.BackgroundColor3 = Config.AimEnabled and Color3.fromRGB(76, 175, 80) or Color3.fromRGB(158, 158, 158)
+            aimToggle.Text = Config.AimEnabled and "ON" or "OFF"
+        end
+    end
+end
+
+-- Toggle UI visibility with Insert key
+if input.KeyCode == Enum.KeyCode.Insert then
+    if MainFrame then
+        MainFrame.Visible = not MainFrame.Visible
+        ToggleBtn.Text = MainFrame.Visible and "Hide" or "Show"
+        IsOpen = MainFrame.Visible
+    end
+end
+
+-- Switch target with Tab key
+if input.KeyCode == Enum.KeyCode.Tab then
+    SwitchTarget()
+end
+
+end)
+
+
+-- == INITIALIZATION ==
+
+
+-- Create the UI
+CreateUI()
+
+
+-- Initial FOV update
+UpdateFOVCircle()
+
+
+print("Aim Assist Script Loaded!")
+print("Controls:")
+print(" - Right Shift: Toggle Aim")
+print(" - Tab: Switch Target")
+print(" - Insert: Toggle UI")
