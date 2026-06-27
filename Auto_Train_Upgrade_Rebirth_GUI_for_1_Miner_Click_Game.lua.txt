@@ -1,0 +1,110 @@
+local player = game.Players.LocalPlayer
+local replicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Remote events (adjust names to match your game)
+local trainRemote = replicatedStorage:FindFirstChild("TrainEvent")
+local upgradeRemote = replicatedStorage:FindFirstChild("UpgradeEvent")
+local rebirthRemote = replicatedStorage:FindFirstChild("RebirthEvent")
+
+-- GUI references
+local screenGui = script.Parent
+local statusLabel = screenGui:WaitForChild("StatusLabel") -- adjust name
+local autoTrainBtn = screenGui:WaitForChild("AutoTrainBtn")
+local autoUpgradeBtn = screenGui:WaitForChild("AutoUpgradeBtn")
+local autoRebirthBtn = screenGui:WaitForChild("AutoRebirthBtn")
+
+-- State flags
+local autoTrain = false
+local autoUpgrade = false
+local autoRebirth = false
+
+-- Coroutine handles
+local trainLoop, upgradeLoop, rebirthLoop = nil, nil, nil
+
+-- Helper to update status
+local function updateStatus(msg)
+	if statusLabel then
+		statusLabel.Text = "Status: " .. msg
+	end
+end
+
+-- Auto Train loop
+local function startTrainLoop()
+	trainLoop = coroutine.create(function()
+		while autoTrain do
+			if trainRemote then
+				trainRemote:FireServer()
+				updateStatus("Training...")
+			end
+			wait(1) -- adjust interval as needed
+		end
+	end)
+	coroutine.resume(trainLoop)
+end
+
+-- Auto Upgrade loop
+local function startUpgradeLoop()
+	upgradeLoop = coroutine.create(function()
+		while autoUpgrade do
+			if upgradeRemote then
+				upgradeRemote:FireServer()
+				updateStatus("Upgrading...")
+			end
+			wait(2) -- adjust interval
+		end
+	end)
+	coroutine.resume(upgradeLoop)
+end
+
+-- Auto Rebirth loop
+local function startRebirthLoop()
+	rebirthLoop = coroutine.create(function()
+		while autoRebirth do
+			if rebirthRemote then
+				rebirthRemote:FireServer()
+				updateStatus("Rebirthing...")
+			end
+			wait(5) -- adjust interval
+		end
+	end)
+	coroutine.resume(rebirthLoop)
+end
+
+-- Toggle functions
+local function toggleAutoTrain()
+	autoTrain = not autoTrain
+	if autoTrain then
+		startTrainLoop()
+		updateStatus("Auto Train ON")
+	else
+		updateStatus("Auto Train OFF")
+	end
+end
+
+local function toggleAutoUpgrade()
+	autoUpgrade = not autoUpgrade
+	if autoUpgrade then
+		startUpgradeLoop()
+		updateStatus("Auto Upgrade ON")
+	else
+		updateStatus("Auto Upgrade OFF")
+	end
+end
+
+local function toggleAutoRebirth()
+	autoRebirth = not autoRebirth
+	if autoRebirth then
+		startRebirthLoop()
+		updateStatus("Auto Rebirth ON")
+	else
+		updateStatus("Auto Rebirth OFF")
+	end
+end
+
+-- Connect buttons
+autoTrainBtn.MouseButton1Click:Connect(toggleAutoTrain)
+autoUpgradeBtn.MouseButton1Click:Connect(toggleAutoUpgrade)
+autoRebirthBtn.MouseButton1Click:Connect(toggleAutoRebirth)
+
+-- Initial status
+updateStatus("Idle - Click toggles to start")
